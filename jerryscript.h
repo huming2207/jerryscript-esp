@@ -211,7 +211,7 @@ extern "C"
 /**
  * Minor version of JerryScript API.
  */
-#define JERRY_API_MINOR_VERSION 3
+#define JERRY_API_MINOR_VERSION 4
 
 /**
  * Patch version of JerryScript API.
@@ -276,6 +276,7 @@ typedef enum
   JERRY_FEATURE_SET, /**< Set support */
   JERRY_FEATURE_WEAKMAP, /**< WeakMap support */
   JERRY_FEATURE_WEAKSET, /**< WeakSet support */
+  JERRY_FEATURE_BIGINT, /**< BigInt support */
   JERRY_FEATURE__COUNT /**< number of features. NOTE: must be at the end of the list */
 } jerry_feature_t;
 
@@ -552,6 +553,7 @@ bool jerry_value_is_boolean (const jerry_value_t value);
 bool jerry_value_is_constructor (const jerry_value_t value);
 bool jerry_value_is_error (const jerry_value_t value);
 bool jerry_value_is_function (const jerry_value_t value);
+bool jerry_value_is_async_function (const jerry_value_t value);
 bool jerry_value_is_number (const jerry_value_t value);
 bool jerry_value_is_null (const jerry_value_t value);
 bool jerry_value_is_object (const jerry_value_t value);
@@ -559,6 +561,7 @@ bool jerry_value_is_promise (const jerry_value_t value);
 bool jerry_value_is_proxy (const jerry_value_t value);
 bool jerry_value_is_string (const jerry_value_t value);
 bool jerry_value_is_symbol (const jerry_value_t value);
+bool jerry_value_is_bigint (const jerry_value_t value);
 bool jerry_value_is_undefined (const jerry_value_t value);
 
 /**
@@ -578,7 +581,60 @@ typedef enum
   JERRY_TYPE_SYMBOL,    /**< symbol type */
 } jerry_type_t;
 
+/**
+ * JerryScript object type information.
+ */
+typedef enum
+{
+  JERRY_OBJECT_TYPE_NONE = 0u,    /**< Non object type */
+  JERRY_OBJECT_TYPE_GENERIC,      /**< Generic JavaScript object without any internal property */
+  JERRY_OBJECT_TYPE_ARRAY,        /**< Array object */
+  JERRY_OBJECT_TYPE_PROXY,        /**< Proxy object */
+  JERRY_OBJECT_TYPE_FUNCTION,     /**< Function object (see jerry_function_get_type) */
+  JERRY_OBJECT_TYPE_TYPEDARRAY,   /**< %TypedArray% object (see jerry_get_typedarray_type) */
+  JERRY_OBJECT_TYPE_ITERATOR,     /**< Iterator object (see jerry_iterator_get_type) */
+  JERRY_OBJECT_TYPE_CONTAINER,    /**< Container object (see jerry_container_get_type) */
+
+  JERRY_OBJECT_TYPE_ARGUMENTS,    /**< Arguments object */
+  JERRY_OBJECT_TYPE_BOOLEAN,      /**< Boolean object */
+  JERRY_OBJECT_TYPE_DATE,         /**< Date object */
+  JERRY_OBJECT_TYPE_NUMBER,       /**< Number object */
+  JERRY_OBJECT_TYPE_REGEXP,       /**< RegExp object */
+  JERRY_OBJECT_TYPE_STRING,       /**< String object */
+  JERRY_OBJECT_TYPE_SYMBOL,       /**< Symbol object */
+  JERRY_OBJECT_TYPE_GENERATOR,    /**< Generator object */
+  JERRY_OBJECT_TYPE_BIGINT,       /**< BigInt object */
+} jerry_object_type_t;
+
+/**
+ * JerryScript function object type information.
+ */
+typedef enum
+{
+  JERRY_FUNCTION_TYPE_NONE = 0u,    /**< Non function type */
+  JERRY_FUNCTION_TYPE_GENERIC,      /**< Generic JavaScript function */
+  JERRY_FUNCTION_TYPE_ACCESSOR,     /**< Accessor function */
+  JERRY_FUNCTION_TYPE_BOUND,        /**< Bound function */
+  JERRY_FUNCTION_TYPE_ARROW,        /**< Arrow fuction */
+  JERRY_FUNCTION_TYPE_GENERATOR,    /**< Generator function */
+} jerry_function_type_t;
+
+/**
+ * JerryScript iterator object type information.
+ */
+typedef enum
+{
+  JERRY_ITERATOR_TYPE_NONE = 0u,    /**< Non iterator type */
+  JERRY_ITERATOR_TYPE_ARRAY,        /**< Array iterator */
+  JERRY_ITERATOR_TYPE_STRING,       /**< String iterator */
+  JERRY_ITERATOR_TYPE_MAP,          /**< Map iterator */
+  JERRY_ITERATOR_TYPE_SET,          /**< Set iterator */
+} jerry_iterator_type_t;
+
 jerry_type_t jerry_value_get_type (const jerry_value_t value);
+jerry_object_type_t jerry_object_get_type (const jerry_value_t value);
+jerry_function_type_t jerry_function_get_type (const jerry_value_t value);
+jerry_iterator_type_t jerry_iterator_get_type (const jerry_value_t value);
 
 /**
  * Checker function of whether the specified compile feature is enabled.
@@ -645,6 +701,7 @@ jerry_value_t jerry_value_to_number (const jerry_value_t value);
 jerry_value_t jerry_value_to_object (const jerry_value_t value);
 jerry_value_t jerry_value_to_primitive (const jerry_value_t value);
 jerry_value_t jerry_value_to_string (const jerry_value_t value);
+jerry_value_t jerry_value_to_bigint (const jerry_value_t value);
 
 /**
  * Acquire types with reference counter (increase the references).
@@ -678,7 +735,12 @@ jerry_value_t jerry_create_string_from_utf8 (const jerry_char_t *str_p);
 jerry_value_t jerry_create_string_sz_from_utf8 (const jerry_char_t *str_p, jerry_size_t str_size);
 jerry_value_t jerry_create_string (const jerry_char_t *str_p);
 jerry_value_t jerry_create_string_sz (const jerry_char_t *str_p, jerry_size_t str_size);
+jerry_value_t jerry_create_external_string (const jerry_char_t *str_p,
+                                            jerry_object_native_free_callback_t free_cb);
+jerry_value_t jerry_create_external_string_sz (const jerry_char_t *str_p, jerry_size_t str_size,
+                                               jerry_object_native_free_callback_t free_cb);
 jerry_value_t jerry_create_symbol (const jerry_value_t value);
+jerry_value_t jerry_create_bigint (const uint64_t *digits_p, uint32_t size, bool sign);
 jerry_value_t jerry_create_undefined (void);
 
 /**
@@ -760,7 +822,35 @@ jerry_promise_state_t jerry_get_promise_state (const jerry_value_t promise);
 /**
  * Symbol functions.
  */
+
+/**
+ * List of well-known symbols.
+ */
+typedef enum
+{
+  JERRY_SYMBOL_HAS_INSTANCE,         /**< @@hasInstance well-known symbol */
+  JERRY_SYMBOL_IS_CONCAT_SPREADABLE, /**< @@isConcatSpreadable well-known symbol */
+  JERRY_SYMBOL_ITERATOR,             /**< @@iterator well-known symbol */
+  JERRY_SYMBOL_ASYNC_ITERATOR,       /**< @@asyncIterator well-known symbol */
+  JERRY_SYMBOL_MATCH,                /**< @@match well-known symbol */
+  JERRY_SYMBOL_REPLACE,              /**< @@replace well-known symbol */
+  JERRY_SYMBOL_SEARCH,               /**< @@search well-known symbol */
+  JERRY_SYMBOL_SPECIES,              /**< @@species well-known symbol */
+  JERRY_SYMBOL_SPLIT,                /**< @@split well-known symbol */
+  JERRY_SYMBOL_TO_PRIMITIVE,         /**< @@toPrimitive well-known symbol */
+  JERRY_SYMBOL_TO_STRING_TAG,        /**< @@toStringTag well-known symbol */
+  JERRY_SYMBOL_UNSCOPABLES,          /**< @@unscopables well-known symbol */
+} jerry_well_known_symbol_t;
+
+jerry_value_t jerry_get_well_known_symbol (jerry_well_known_symbol_t symbol);
+jerry_value_t jerry_get_symbol_description (const jerry_value_t symbol);
 jerry_value_t jerry_get_symbol_descriptive_string (const jerry_value_t symbol);
+
+/**
+ * BigInt functions.
+ */
+uint32_t jerry_get_bigint_size_in_digits (jerry_value_t value);
+void jerry_get_bigint_digits (jerry_value_t value, uint64_t *digits_p, uint32_t size, bool *sign_p);
 
 /**
  * Input validator functions.
@@ -843,6 +933,8 @@ typedef enum
   JERRY_TYPEDARRAY_INT32,
   JERRY_TYPEDARRAY_FLOAT32,
   JERRY_TYPEDARRAY_FLOAT64,
+  JERRY_TYPEDARRAY_BIGINT64,
+  JERRY_TYPEDARRAY_BIGUINT64,
 } jerry_typedarray_type_t;
 
 /**
@@ -1072,7 +1164,7 @@ void jerry_port_print_char (char c);
  * Open a source file and read its contents into a buffer.
  *
  * Note:
- *      This port function is called by jerry-core when JERRY_ES2015_MODULE_SYSTEM
+ *      This port function is called by jerry-core when JERRY_MODULE_SYSTEM
  *      is enabled. The path is specified in the import statement's 'from "..."'
  *      section.
  *
@@ -1096,7 +1188,7 @@ void jerry_port_release_source (uint8_t *buffer_p);
  * Normalize a file path string.
  *
  * Note:
- *      This port function is called by jerry-core when ES2015_MODULE_SYSTEM
+ *      This port function is called by jerry-core when JERRY_MODULE_SYSTEM
  *      is enabled. The normalized path is used to uniquely identify modules.
  *
  * @param in_path_p Input path as a zero terminated string.
@@ -1117,7 +1209,7 @@ size_t jerry_port_normalize_path (const char *in_path_p,
  * Get the module object of a native module.
  *
  * Note:
- *      This port function is called by jerry-core when ES2015_MODULE_SYSTEM
+ *      This port function is called by jerry-core when JERRY_MODULE_SYSTEM
  *      is enabled.
  *
  * @param name String value of the module specifier.
@@ -1211,7 +1303,7 @@ extern "C"
 /**
  * Jerry snapshot format version.
  */
-#define JERRY_SNAPSHOT_VERSION (48u)
+#define JERRY_SNAPSHOT_VERSION (59u)
 
 /**
  * Flags for jerry_generate_snapshot and jerry_generate_function_snapshot.
